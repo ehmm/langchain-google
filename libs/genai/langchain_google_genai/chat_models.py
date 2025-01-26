@@ -579,7 +579,15 @@ def _is_event_loop_running() -> bool:
         return False
 
 
+from langchain_google_community.search import GoogleSearchAPIWrapper
+
+
 class ChatGoogleGenerativeAI(_BaseGoogleGenerativeAI, BaseChatModel):
+    search_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    """Kwargs to pass to GoogleSearchAPIWrapper"""
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.search_api_wrapper = GoogleSearchAPIWrapper(**self.search_kwargs)
     """`Google AI` chat models integration.
 
     Instantiation:
@@ -1195,6 +1203,54 @@ class ChatGoogleGenerativeAI(_BaseGoogleGenerativeAI, BaseChatModel):
                 SafetySetting(category=c, threshold=t)
                 for c, t in safety_settings.items()
             ]
+        if tool_choice and tool_config:
+            raise ValueError(
+                "Must specify at most one of tool_choice and tool_config, received "
+                f"both:\n\n{tool_choice=}\n\n{tool_config=}"
+            )
+        formatted_tools = None
+        if tools:
+            formatted_tools = [convert_to_genai_function_declarations(tools)]
+        elif functions:
+            formatted_tools = [convert_to_genai_function_declarations(functions)]
+
+        system_instruction, history = _parse_chat_history(
+            messages,
+            convert_system_message_to_human=self.convert_system_message_to_human,
+        )
+        if tool_choice:
+            if not formatted_tools:
+                msg = (
+                    f"Received {tool_choice=} but no {tools=}. 'tool_choice' can only "
+                    f"be specified if 'tools' is specified."
+                )
+                raise ValueError(msg)
+            all_names = [
+                f.name for t in formatted_tools for f in t.function_declarations
+            ]
+            tool_config = _tool_choice_to_tool_config(tool_choice, all_names)
+
+        formatted_tool_config = None
+        if tool_config:
+            formatted_tool_config = ToolConfig(
+                function_calling_config=tool_config["function_calling_config"]
+            )
+        formatted_safety_settings = []
+        if safety_settings:
+            formatted_safety_settings = [
+                SafetySetting(category=c, threshold=t)
+                for c, t in safety_settings.items()
+            ]
+        search_query = ""
+        for message in messages:
+            if isinstance(message, HumanMessage):
+                search_query = message.content
+                break
+
+        if "google_search_retrieval" in str(tools) or "google_search_retrieval" in str(functions):
+            search_result = self.search_api_wrapper.run(search_query)
+            history.append(Content(role="user", parts=[Part(text=search_result)]))
+
         request = GenerateContentRequest(
             model=self.model,
             contents=history,

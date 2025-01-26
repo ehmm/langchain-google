@@ -75,6 +75,78 @@ def test_integration_initialization() -> None:
     )
 
 
+def test_chat_model_with_grounded_search() -> None:
+    """Test that the chat model can handle grounded search."""
+    with patch(
+        "langchain_google_genai.chat_models.GoogleSearchAPIWrapper.run"
+    ) as mock_search:
+        mock_search.return_value = "search result"
+        chat = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            google_api_key="test-key",
+            search_kwargs={"k": 1},
+        )
+        tools = ["google_search_retrieval"]
+        messages = [
+            HumanMessage(content="What is the capital of France?")
+        ]
+        response = chat.invoke(messages, tools=tools)
+        assert "search result" in response.content
+
+    with patch("langchain_google_genai.chat_models.GoogleSearchAPIWrapper.run") as mock_search:
+        mock_search.return_value = "search result"
+        chat = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            google_api_key="test-key",
+            search_kwargs={"k": 1},
+        )
+        tools = ["google_search_retrieval"]
+        messages = [
+            HumanMessage(content="What is the capital of France?")
+        ]
+        response = chat.invoke(messages, tools=tools)
+        assert "search result" in response.content
+
+    """Test chat model initialization."""
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-nano",
+        google_api_key=SecretStr("..."),  # type: ignore[call-arg]
+        top_k=2,
+        top_p=1,
+        temperature=0.7,
+        n=2,
+    )
+    ls_params = llm._get_ls_params()
+    assert ls_params == {
+        "ls_provider": "google_genai",
+        "ls_model_name": "models/gemini-nano",
+        "ls_model_type": "chat",
+        "ls_temperature": 0.7,
+    }
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-nano",
+        google_api_key=SecretStr("..."),  # type: ignore[call-arg]
+        max_output_tokens=10,
+    )
+    ls_params = llm._get_ls_params()
+    assert ls_params == {
+        "ls_provider": "google_genai",
+        "ls_model_name": "models/gemini-nano",
+        "ls_model_type": "chat",
+        "ls_temperature": 0.7,
+        "ls_max_tokens": 10,
+    }
+
+    ChatGoogleGenerativeAI(
+        model="gemini-nano",
+        api_key=SecretStr("..."),
+        top_k=2,
+        top_p=1,
+        temperature=0.7,
+    )
+
+
 def test_initialization_inside_threadpool() -> None:
     # new threads don't have a running event loop,
     # thread pool executor easiest way to create one
